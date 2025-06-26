@@ -1,0 +1,5 @@
+#!/bin/bash
+working_dir='/Users/stavros/src/mailbrowser'
+source $working_dir/venv/bin/activate
+
+python mailb.py $1
