@@ -1,6 +1,6 @@
 from __future__ import annotations
 from os.path import exists
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox 
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox , QFileSystemModel
 from PyQt5 import QtCore, QtWidgets, QtWebEngineWidgets, uic
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QColor
 import sys
@@ -71,9 +71,24 @@ class MainWindow(QMainWindow):
 
     def on_message_clicked(self, index) -> None:
         row = index.row()
-        item_selected = self.model.item(row, 3) # the subject column
-        self.messageContent.setText(item_selected.data())
+        item_selected_message_content = self.model.item(row, 3) # the subject column
+        message_content, attachments_folder = item_selected_message_content.data()
+        self.messageContent.setText(message_content)
+        if os.path.exists(attachments_folder):
+            self.modelD = QFileSystemModel()
+            self.modelD.setRootPath(attachments_folder)
+            self.attachmentsView.setModel(self.modelD)
+            self.attachmentsView.setRootIndex(self.modelD.index(attachments_folder))
+            self.attachmentsView.doubleClicked.connect(self.on_attachment_double_clicked)
+        else:
+            self.attachmentsView.setModel(None)
 
+    def on_attachment_double_clicked(self, index):
+        file_path = self.modelD.filePath(index)
+
+        import subprocess
+        subprocess.run(["open", file_path])
+    
     def messages_list(self, folder):
         self.model = QStandardItemModel()
         self.model.setHorizontalHeaderLabels(['Date Sent', 'From', 'To', 'Subject'])
@@ -86,7 +101,7 @@ class MainWindow(QMainWindow):
             item_recipient.setBackground(QColor("lightgreen"))
             item_subject = QStandardItem(m.subject)
             item_subject.setBackground(QColor("lightblue"))
-            item_subject.setData(m.content)
+            item_subject.setData((m.content, m.attachments_folder))
             self.model.appendRow([item_date, item_sender, item_recipient, item_subject])
         self.messagesTableView.setModel(self.model)
         self.messagesTableView.setColumnWidth(0, 250)
@@ -192,9 +207,12 @@ class Folder():
                 else:
                     print(f"No message body file found")
                     message_html = '' 
-                message = Message(message_folder, date, subject, sender, recipient, message_html)
+                
+                attachments_folder = f"{self._parent}/{self._folder_name}/{message_folder}/Attachments"
+                
+                message = Message(message_folder, date, subject, sender, recipient, message_html, attachments_folder)
                 message_list.append(message)
-        
+
             def by_date(e):
                 return e.int_date
             message_list.sort(key=by_date, reverse=True)
@@ -203,13 +221,14 @@ class Folder():
             print(f"{self._folder_name} is not a dir ERROR:{e}")
 
 class Message:
-    def __init__(self, folder_name: str, date: str, subject: str, sender: str, recipient: str, content: str) ->None:
+    def __init__(self, folder_name: str, date: str, subject: str, sender: str, recipient: str, content: str, attachments_folder: str) ->None:
         self._folder_name = folder_name
         self._date = date
         self._subject = subject
         self._sender = sender
         self._recipient = recipient
         self._content = content
+        self._attachments_folder = attachments_folder
         
         '''
             Convert date to unixtime for the sorting
@@ -247,6 +266,10 @@ class Message:
     @property
     def content(self):
         return self._content
+
+    @property
+    def attachments_folder(self):
+        return self._attachments_folder
 
 if __name__ == "__main__":
     mailb_app = QApplication(sys.argv)
