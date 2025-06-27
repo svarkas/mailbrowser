@@ -1,4 +1,5 @@
 from __future__ import annotations
+from os.path import exists
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QMessageBox 
 from PyQt5 import QtCore, QtWidgets, QtWebEngineWidgets, uic
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QColor
@@ -13,7 +14,7 @@ from typing import Literal
 from typing import Optional
 from email.utils import parsedate_to_datetime
 
-folders = []
+#folders = []
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -31,15 +32,15 @@ class MainWindow(QMainWindow):
         sys.exit(app.exec_())
     
     def load_root_folder(self):
+        self.folders = []
         if self.email_dir is None or self.email_dir == '':
             QMessageBox.warning(self, "No e-mail folder Selected", "Please select an e-mail folder first!!!")
         else:
             folders_found = os.listdir(self.email_dir)
             for f in folders_found:
                 folder = Folder(f, self.email_dir)
-                folders.append(folder)
-                self.folder_list()
-
+                self.folders.append(folder)
+            self.folder_list()
 
     def set_email_dir(self):
         email_path = QFileDialog.getExistingDirectory(self, "Choose E-mail Folder")
@@ -48,22 +49,25 @@ class MainWindow(QMainWindow):
 
     def folder_list(self) -> None:
         self.model = QStandardItemModel()
-        self.model.clear()
         self.model.setHorizontalHeaderLabels(['Folder'])
-        for f in folders:
+        for f in self.folders:
             if f.mailfolder:
                 item = QStandardItem(f.folder_name)
                 self.model.appendRow(item)
         self.folderListView.setModel(self.model)
 
     def on_folder_clicked(self, index):
+        print(self.folders[1].folder_name)
         try:
+            # To make sure that the correct model is being loaded
+            self.model = self.folderListView.model()
             item = self.model.itemFromIndex(index)
             folder_name_selected = item.text()
-            folder = next(f for f in folders if f.folder_name == folder_name_selected)
+            print(f'f_selected::{folder_name_selected}')
+            folder = next(f for f in self.folders if f.folder_name == folder_name_selected)
             self.messages_list(folder)
         except AttributeError as e:
-            print("Folder is Empty")
+            print(f"Folder is Empty Error:{e}")
 
     def on_message_clicked(self, index) -> None:
         row = index.row()
@@ -130,7 +134,14 @@ class Folder():
         email = email.strip('<')
         email = email.strip('>')
         email = email.strip('"')
+        email = email.strip()
         return email 
+    
+    def extract_outlook_date_from_string(self, line: str) -> str:
+        date = line.replace("Client submit time:", "")
+        date = date.strip()
+        date = re.sub(r'\.[0-9]{9}', "", date)
+        return date
 
     def get_messages(self) -> Optional(list[Message]) :
         message_list = []
@@ -165,9 +176,7 @@ class Folder():
                             elif re.search(r'^Subject:', line):
                                 subject = self.extract_mail_from_string(line)
                             elif re.search(r'^Client submit time:', line):
-                                line = line.replace("Client submit time:", "")
-                                line = line.strip(" ")
-                                date = self.extract_mail_from_string(date)
+                                date = self.extract_outlook_date_from_string(line)
                             
                             if subject != '' and date != '' and sender != '' :
                                 break 
@@ -201,7 +210,10 @@ class Message:
         self._sender = sender
         self._recipient = recipient
         self._content = content
-
+        
+        '''
+            Convert date to unixtime for the sorting
+        '''
         if self._date != '':
             self._dt = parsedate_to_datetime(self._date)
             self._int_date = int(self._dt.timestamp())
